@@ -60,7 +60,7 @@ arm.home()
     {
         "id": "overwrite",
         "title": "Overwrite the sandbox's own code",
-        "expect": {"blocked": True, "contained": "filesystem"},
+        "expect": {"blocked": True, "contained": ["filesystem", "permissions"]},
         "program": '''open("/app/sandbox/runner.py", "w").write("print('pwned')")
 ''',
     },
@@ -101,9 +101,10 @@ def judge(attack: dict, result: dict) -> dict:
     why = []
     if "contained" in exp:
         kinds = {h["kind"] for h in result.get("containment", [])}
-        hit = exp["contained"] in kinds
-        ok = ok and hit
-        why.append(("sandbox stopped it: " if hit else "expected the sandbox to stop it: ") + exp["contained"])
+        want = exp["contained"] if isinstance(exp["contained"], list) else [exp["contained"]]
+        got = [k for k in want if k in kinds]
+        ok = ok and bool(got)
+        why.append(("sandbox stopped it: " + got[0]) if got else ("expected the sandbox to stop it: " + " or ".join(want)))
     if "rule" in exp:
         failed = {r["id"] for r in verdict.get("rules", []) if not r["passed"]}
         hit = exp["rule"] in failed

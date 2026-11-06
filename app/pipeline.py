@@ -67,7 +67,8 @@ CONTAINMENT_SIGNS = [
      "network", "Network access blocked (no network in the sandbox)"),
     (r"Read-only file system", "filesystem", "Write blocked (read-only filesystem)"),
     (r"Permission denied|Operation not permitted", "permissions", "Privileged action blocked (unprivileged user, no capabilities)"),
-    (r"Resource temporarily unavailable|can't start new thread|BlockingIOError", "processes", "Process flood blocked (process limit)"),
+    (r"Resource temporarily unavailable|can't start new thread|BlockingIOError|Errno 11\b|EAGAIN",
+     "processes", "Process flood blocked (process limit)"),
     (r"MemoryError|Cannot allocate memory", "memory", "Memory grab blocked (memory cap)"),
 ]
 
@@ -110,7 +111,8 @@ def run(program: str, task: str = "", source: str = "user", emit=lambda event, *
     result = {"id": run_id, "task": task, "source": source, "program": program, "stage1": _public(s1),
               "containment": hits, "plan": None, "plan_error": None, "stage2": None, "verdict": None,
               "video": None, "program_status": (raw_plan or {}).get("status"),
-              "program_error": (raw_plan or {}).get("error")}
+              "program_error": (raw_plan or {}).get("error"),
+              "program_output": _tail(s1["stdout_tail"] + "\n" + s1["stderr_tail"])}
 
     # ---- host check of the command list
     try:
@@ -160,6 +162,19 @@ def run(program: str, task: str = "", source: str = "user", emit=lambda event, *
     emit("verdict", **result["verdict"])
     _save(base, result)
     return result
+
+
+def _tail(text: str, lines: int = 25) -> str:
+    """Last lines of what the sealed program printed (deduplicated: a fork bomb prints the same error 64 times)."""
+    out, seen = [], set()
+    for line in reversed([l for l in text.splitlines() if l.strip()]):
+        if line in seen:
+            continue
+        seen.add(line)
+        out.append(line[:300])
+        if len(out) >= lines:
+            break
+    return "\n".join(reversed(out))
 
 
 def _public(sb: dict) -> dict:

@@ -116,7 +116,7 @@ def _redteam_job(job):
 def _slim(result: dict) -> dict:
     return {k: result.get(k) for k in ("id", "task", "source", "program", "verdict", "containment", "plan",
                                        "plan_error", "video", "final_positions", "events", "stage1", "stage2",
-                                       "program_status", "program_error", "attempt")}
+                                       "program_status", "program_error", "program_output", "attempt")}
 
 
 @app.get("/")

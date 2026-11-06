@@ -149,6 +149,8 @@
       <div class="tabs" id="tabs"></div>
       <pre id="code">–</pre>
       <div class="muted" id="programNote" style="margin-top:8px"></div>
+      <div class="muted" style="margin-top:12px">What the sealed program printed</div>
+      <pre id="output" style="margin-top:6px; max-height:180px">–</pre>
     </section>
   </div>
 </main>
@@ -253,6 +255,7 @@ async function run() {
       setStep("verdict", r.verdict.approved ? "ok" : "bad");
       showVerdict(r.verdict, r.containment);
       const a = attempts[attempts.length - 1]; if (a) { a.verdict = r.verdict.summary; a.approved = r.verdict.approved; renderTabs(); }
+      $("#output").textContent = r.program_output || "(nothing)";
       if (r.video) { $("#video").src = r.video; $("#video").play().catch(() => {}); }
       $("#runMeta").textContent = `Run ${r.id} · attempt ${r.attempt} · ${r.plan ? r.plan.length + " arm commands" : "no arm commands"}` +
         (r.program_error ? ` · program error: ${r.program_error}` : "");
