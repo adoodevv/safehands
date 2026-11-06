@@ -71,7 +71,10 @@ def _agent_job(job, req: RunRequest):
                 v = result["verdict"]
                 if v["approved"] or req.program:
                     break
-                broken = [f"{r['title']}: {r['detail']}" for r in v["rules"] if not r["passed"]]
+                failed = [r for r in v["rules"] if not r["passed"]]
+                if not any(r["id"] != "sandbox" for r in failed):
+                    break   # the program itself failed or was contained; a rewrite of the same task won't help
+                broken = [f"{r['title']}: {r['detail']}" for r in failed]
                 feedback.append({"program": prog["program"], "broken": broken})
                 pipeline.audit(result["id"], "retry", broken=broken)
             job["result"] = result
@@ -132,7 +135,7 @@ def info():
     latest = pipeline.RUNS / "redteam_latest.json"
     return {"model": model, "inference": "Vultr Serverless Inference" if agent.KEY else "mock",
             "runtime": sandbox.runtime_available(), "image": sandbox.IMAGE,
-            "limits": {"network": "none", "memory": sandbox.MEMORY, "cpus": sandbox.CPUS, "pids": sandbox.PIDS,
+            "limits": {"network": "none", "memory": sandbox.MEMORY, "replay_memory": sandbox.REPLAY_MEMORY, "cpus": sandbox.CPUS, "pids": sandbox.PIDS,
                        "untrusted_timeout_s": pipeline.PLAN_TIMEOUT_S, "replay_timeout_s": sandbox.TIMEOUT_S},
             "audit": pipeline.verify_audit(),
             "redteam": json.loads(latest.read_text()) if latest.exists() else None,

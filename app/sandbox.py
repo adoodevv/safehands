@@ -24,7 +24,8 @@ ROOT = Path(__file__).resolve().parent.parent
 IMAGE = os.environ.get("SAFEHANDS_IMAGE", "safehands-sandbox:latest")
 RUNTIME = os.environ.get("SAFEHANDS_RUNTIME", "")            # "runsc" for gVisor
 TIMEOUT_S = int(os.environ.get("SAFEHANDS_TIMEOUT", "120"))
-MEMORY = os.environ.get("SAFEHANDS_MEMORY", "768m")
+MEMORY = os.environ.get("SAFEHANDS_MEMORY", "768m")                 # untrusted stage
+REPLAY_MEMORY = os.environ.get("SAFEHANDS_REPLAY_MEMORY", "1536m")  # trusted replay: renders video, runs no model code
 CPUS = os.environ.get("SAFEHANDS_CPUS", "1.5")
 PIDS = os.environ.get("SAFEHANDS_PIDS", "64")
 GL = os.environ.get("SAFEHANDS_GL", "osmesa")
@@ -46,14 +47,15 @@ def run(job_dir: Path, mode: str, timeout_s: int | None = None) -> dict:
     job_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(job_dir, 0o777)  # the sandbox user (uid 1000) writes its results here, nowhere else
     name = f"safehands-{uuid.uuid4().hex[:12]}"
+    mem = MEMORY if mode == "plan" else REPLAY_MEMORY
     cmd = ["docker", "run", "--name", name, "--rm=false",
            "--network", "none",
            "--read-only", "--tmpfs", "/tmp:rw,size=64m,mode=1777",
-           "--memory", MEMORY, "--memory-swap", MEMORY,
+           "--memory", mem, "--memory-swap", mem,
            "--cpus", CPUS, "--pids-limit", PIDS,
            "--user", "1000:1000",
            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-           "--env", f"MUJOCO_GL={GL}", "--env", "HOME=/tmp", "--env", "PYTHONDONTWRITEBYTECODE=1",
+           "--env", f"MUJOCO_GL={GL}", "--env", "LP_NUM_THREADS=2", "--env", "HOME=/tmp", "--env", "PYTHONDONTWRITEBYTECODE=1",
            "-v", f"{ROOT / 'sandbox'}:/app/sandbox:ro",
            "-v", f"{ROOT / 'sim'}:/app/sim:ro",
            "-v", f"{job_dir}:/job:rw"]
@@ -98,7 +100,7 @@ def run(job_dir: Path, mode: str, timeout_s: int | None = None) -> dict:
         "wall_seconds": round(time.time() - t0, 2),
         "stdout_tail": stdout[-2000:],
         "stderr_tail": stderr[-3000:],
-        "limits": {"network": "none", "memory": MEMORY, "cpus": CPUS, "pids": PIDS,
+        "limits": {"network": "none", "memory": mem, "cpus": CPUS, "pids": PIDS,
                    "filesystem": "read-only (+ /job, 64 MB /tmp)", "user": "uid 1000, no capabilities",
                    "secrets": "none", "timeout_s": timeout_s},
         "output": output,

@@ -44,7 +44,7 @@ class StopProgram(Exception):
 
 
 class Sim:
-    def __init__(self, scene: Path, record_video: bool = True):
+    def __init__(self, scene: Path, record_video: bool = True, video_path: Path | None = None):
         self.m = mujoco.MjModel.from_xml_path(str(scene))
         self.d = mujoco.MjData(self.m)
         self.qadr = [self.m.jnt_qposadr[self.m.joint(j).id] for j in ARM_JOINTS]
@@ -56,8 +56,14 @@ class Sim:
         self.held: str | None = None
         self.held_offset = np.zeros(3)
         self.frames: list[dict] = []
-        self.video: list[np.ndarray] = []
+        self.video_frames = 0
         self.renderer = mujoco.Renderer(self.m, VIDEO_H, VIDEO_W) if record_video else None
+        self.writer = None
+        if record_video and video_path is not None:
+            import imageio.v2 as imageio
+            # frames go straight to the encoder, so memory use stays flat however long the run is
+            self.writer = imageio.get_writer(str(video_path), fps=VIDEO_HZ, codec="libx264", quality=7,
+                                             macro_block_size=8, ffmpeg_log_level="error")
         self.cam = self.m.camera("overview").id
         self.events: list[dict] = []
         self.plan: list[dict] = []
@@ -107,7 +113,9 @@ class Sim:
         if self.renderer is not None and (force or self.d.time >= self._next_frame):
             self._next_frame = self.d.time + 1.0 / VIDEO_HZ
             self.renderer.update_scene(self.d, camera=self.cam)
-            self.video.append(self.renderer.render().copy())
+            if self.writer is not None:
+                self.writer.append_data(self.renderer.render())
+                self.video_frames += 1
 
     def step_for(self, seconds: float):
         end = self.d.time + seconds
@@ -250,15 +258,6 @@ class Scene:
         return BLOCKS + ["tray"]
 
 
-def write_video(frames, path: Path):
-    import imageio.v2 as imageio
-
-    with imageio.get_writer(str(path), fps=VIDEO_HZ, codec="libx264", quality=7,
-                            macro_block_size=8, ffmpeg_log_level="error") as w:
-        for f in frames:
-            w.append_data(f)
-
-
 def replay(arm: "Arm", plan: list[dict]):
     """Run a validated command list. No model-written code is involved."""
     for c in plan:
@@ -284,7 +283,7 @@ def main(job: Path, mode: str):
     """mode 'plan': run the untrusted program, write plan.json (its arm commands). No video.
        mode 'replay': run job/plan.json (validated by the host) in a fresh sim, write trajectory.json + sim.mp4."""
     t0 = time.time()
-    sim = Sim(SCENE, record_video=(mode == "replay"))
+    sim = Sim(SCENE, record_video=(mode == "replay"), video_path=job / "sim.mp4")
     arm, scene = Arm(sim), Scene(sim)
     status, error = "finished", None
     try:
@@ -314,9 +313,9 @@ def main(job: Path, mode: str):
         "final_positions": {n: list(scene.find(n)) for n in BLOCKS},
         "joint_names": ARM_JOINTS,
     }
+    if sim.writer is not None:
+        sim.writer.close()
     (job / "trajectory.json").write_text(json.dumps(result))
-    if sim.video:
-        write_video(sim.video, job / "sim.mp4")
     print(json.dumps({"status": status, "error": error, "frames": len(sim.frames)}))
 
 
