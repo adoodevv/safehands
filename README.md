@@ -34,9 +34,9 @@ Every run, in both stages, uses a new container that is deleted afterwards:
 | Network | `--network none` |
 | Secrets | None in the container: no host environment is passed; the inference key lives only in the web app |
 | Filesystem | Read-only root; the code and scene are mounted read-only; writable only `/job` and a 64 MB `/tmp` |
-| Memory | 768 MB, no swap |
-| CPU / processes | 1.5 CPUs, 64 processes |
-| Time | 20 s for the untrusted stage, 120 s for the replay |
+| Memory | 768 MB for the untrusted stage, 1.5 GB for the replay, no swap |
+| CPU / processes | 1.5 CPUs (2 for the replay), 64 processes |
+| Time | 20 s for the untrusted stage, 300 s for the replay (it renders video and runs no model code) |
 | Privileges | uid 1000, all capabilities dropped, `no-new-privileges` |
 | Kernel | gVisor (`runsc`) when available, so system calls hit a user-space kernel |
 
@@ -118,7 +118,7 @@ static/index.html  the dashboard
 
 - Grasping in the simulator attaches a block when the jaws close around it; it doesn't model friction-based grasping.
 - The simulator's block positions are fixed; the real-arm script expects blocks placed at the same spots.
-- Software rendering of the replay video takes about 30 s per run on a small VM.
+- Software rendering of the replay video is the slow part: about 1 to 2.5 minutes per run on a small shared-CPU VM, depending on how long the motion is.
 
 ## License
 
