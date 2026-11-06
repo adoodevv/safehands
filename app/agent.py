@@ -99,12 +99,16 @@ def model_id() -> str:
     if _model_cache:
         return _model_cache
     ids = [m["id"] for m in _get("/models").get("data", [])]
-    for pref in ("coder", "qwen", "llama-3.3", "llama", "deepseek", "mistral", "kimi", "gpt"):
-        for i in ids:
+    # skip models that make images, audio, speech, embeddings or safety labels: we need a text/code model
+    not_text = ("image", "tts", "asr", "speech", "whisper", "voxtral", "music", "embedding", "reranker",
+                "safety", "chatterbox", "ace-step")
+    text_ids = sorted((i for i in ids if not any(w in i.lower() for w in not_text)), reverse=True)  # newest version first
+    for pref in ("coder", "glm-5", "deepseek", "qwen3", "kimi", "minimax-m", "llama", "mistral", "gpt"):
+        for i in text_ids:
             if pref in i.lower():
                 _model_cache = i
                 return i
-    _model_cache = ids[0]
+    _model_cache = (text_ids or ids)[0]
     return _model_cache
 
 
@@ -125,6 +129,8 @@ def write_program(task: str, feedback: list[dict] | None = None) -> dict:
                          "\n- ".join(fb["broken"]) +
                          "\nWrite a corrected program that does the original task and breaks none of the rules."})
     mid = model_id()
-    out = _post("/chat/completions", {"model": mid, "messages": messages, "max_tokens": 900, "temperature": 0.2})
-    text = out["choices"][0]["message"]["content"] or ""
+    out = _post("/chat/completions", {"model": mid, "messages": messages, "max_tokens": 4000, "temperature": 0.2})
+    msg = out["choices"][0]["message"]
+    # reasoning models may put their thinking in a separate field; the program is in `content`
+    text = msg.get("content") or msg.get("reasoning_content") or ""
     return {"program": extract(text), "model": mid, "mock": False}
