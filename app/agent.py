@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 
 BASE = os.environ.get("SAFEHANDS_INFERENCE_URL", "https://api.vultrinference.com/v1")
@@ -79,11 +80,41 @@ def mock_program(task: str) -> str:
     return MOCK["stack"]
 
 
-def _post(path: str, body: dict) -> dict:
+def _post(path: str, body: dict, timeout: int = 150) -> dict:
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(),
                                  headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=90) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
+
+
+# Ways different inference servers accept "don't think for long". Unknown fields are usually ignored;
+# a server that rejects them (HTTP 400) gets the next, plainer request.
+THINK_LESS = [
+    {"reasoning_effort": "low", "chat_template_kwargs": {"enable_thinking": False, "thinking": False},
+     "thinking": {"type": "disabled"}},
+    {"reasoning_effort": "low"},
+    {"chat_template_kwargs": {"enable_thinking": False}},
+    {},
+]
+_think_ok: dict | None = None   # the first variant this server accepted
+
+
+def chat(model: str, messages: list[dict], max_tokens: int = 4000, timeout: int = 150) -> dict:
+    """One chat completion, asking the model to keep its hidden reasoning short where the server allows."""
+    global _think_ok
+    variants = [_think_ok] if _think_ok is not None else THINK_LESS
+    last_err = None
+    for extra in variants:
+        body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2, **extra}
+        try:
+            out = _post("/chat/completions", body, timeout)
+            _think_ok = extra
+            return out
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                raise
+            last_err = e
+    raise last_err
 
 
 def _get(path: str) -> dict:
@@ -134,8 +165,8 @@ def write_program(task: str, feedback: list[dict] | None = None) -> dict:
                          "\nWrite a corrected program that does the original task and breaks none of the rules."})
     mid = model_id()
     last = {}
-    for _ in range(2):   # an empty or cut-off reply gets one more try
-        out = _post("/chat/completions", {"model": mid, "messages": messages, "max_tokens": 6000, "temperature": 0.2})
+    for budget in (4000, 12000):   # a reply cut off mid-thought gets one more try with more room
+        out = chat(mid, messages, max_tokens=budget)
         choice = out["choices"][0]
         msg = choice.get("message") or {}
         content = msg.get("content") or ""
