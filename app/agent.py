@@ -68,6 +68,10 @@ arm.home()
 }
 
 
+class AgentError(RuntimeError):
+    pass
+
+
 def mock_program(task: str) -> str:
     t = task.lower()
     if "tray" in t or "tidy" in t or "clean" in t:
@@ -129,8 +133,17 @@ def write_program(task: str, feedback: list[dict] | None = None) -> dict:
                          "\n- ".join(fb["broken"]) +
                          "\nWrite a corrected program that does the original task and breaks none of the rules."})
     mid = model_id()
-    out = _post("/chat/completions", {"model": mid, "messages": messages, "max_tokens": 4000, "temperature": 0.2})
-    msg = out["choices"][0]["message"]
-    # reasoning models may put their thinking in a separate field; the program is in `content`
-    text = msg.get("content") or msg.get("reasoning_content") or ""
-    return {"program": extract(text), "model": mid, "mock": False}
+    last = {}
+    for _ in range(2):   # an empty or cut-off reply gets one more try
+        out = _post("/chat/completions", {"model": mid, "messages": messages, "max_tokens": 6000, "temperature": 0.2})
+        choice = out["choices"][0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
+        # reasoning models may also return their thinking separately; only `content` is the answer
+        program = extract(content) if content.strip() else ""
+        last = {"model": mid, "mock": False, "finish_reason": choice.get("finish_reason"),
+                "raw": content[-1500:], "usage": out.get("usage")}
+        if program.strip() and "arm." in program:
+            return {"program": program, **last}
+    raise AgentError(f"{mid} returned no usable program (finish_reason={last.get('finish_reason')}, "
+                     f"usage={last.get('usage')}, reply ends: {last.get('raw', '')[-300:]!r})")

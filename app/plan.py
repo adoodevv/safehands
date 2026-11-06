@@ -36,6 +36,8 @@ def validate(raw) -> list[dict]:
     if not isinstance(raw, dict) or not isinstance(raw.get("plan"), list):
         raise PlanError("plan.json is missing or malformed")
     plan = raw["plan"]
+    if not plan:
+        raise PlanError("the program produced no arm commands")
     if len(plan) > MAX_COMMANDS:
         raise PlanError(f"{len(plan)} commands (max {MAX_COMMANDS})")
     clean = []

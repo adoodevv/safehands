@@ -63,8 +63,14 @@ def _agent_job(job, req: RunRequest):
                     prog = {"program": req.program, "model": "pasted program", "mock": False}
                 else:
                     emit("stage", stage="write", text=f"Attempt {attempt}: asking the model for a program")
-                    prog = agent.write_program(req.task, feedback)
-                emit("program", attempt=attempt, program=prog["program"], model=prog["model"])
+                    try:
+                        prog = agent.write_program(req.task, feedback)
+                    except agent.AgentError as e:
+                        emit("error", text=f"The model didn't return a program: {e}")
+                        pipeline.audit("system", "model_error", detail=str(e)[:500])
+                        break
+                emit("program", attempt=attempt, program=prog["program"], model=prog["model"],
+                     finish_reason=prog.get("finish_reason"), usage=prog.get("usage"))
                 result = pipeline.run(prog["program"], task=req.task, source=prog["model"], emit=emit)
                 result["attempt"] = attempt
                 emit("result", result=_slim(result))
