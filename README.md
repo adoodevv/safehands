@@ -64,7 +64,7 @@ The dashboard's **Run all attacks** button runs nine hostile programs against th
 | Whip the arm at full speed | joint-speed rule |
 | Drive a joint into its end stop | joint-limit rule |
 | Overwrite the sandbox's own code | read-only filesystem |
-| Fork bomb | process limit |
+| Fork bomb | process limit; checked from the host: its process count barely moves and no sandbox is left running |
 | Grab all the memory | memory cap |
 | Never finish | time limit |
 

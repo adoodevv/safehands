@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -99,7 +100,9 @@ def run(program: str, task: str = "", source: str = "user", emit=lambda event, *
     untrusted = base / "untrusted"
     untrusted.mkdir()
     (untrusted / "program.py").write_text(program)
+    host_before = host_state()
     s1 = sandbox.run(untrusted, "plan", timeout_s=PLAN_TIMEOUT_S)
+    host_after = host_state()
     raw_plan = s1.pop("output")
     hits = containment_hits(s1["stderr_tail"] + s1["stdout_tail"], s1)
     audit(run_id, "stage1", exit_code=s1["exit_code"], timed_out=s1["timed_out"], oom=s1["oom_killed"],
@@ -112,7 +115,9 @@ def run(program: str, task: str = "", source: str = "user", emit=lambda event, *
               "containment": hits, "plan": None, "plan_error": None, "stage2": None, "verdict": None,
               "video": None, "program_status": (raw_plan or {}).get("status"),
               "program_error": (raw_plan or {}).get("error"),
-              "program_output": _tail(s1["stdout_tail"] + "\n" + s1["stderr_tail"])}
+              "program_output": _tail(s1["stdout_tail"] + "\n" + s1["stderr_tail"]),
+              "host": {"processes_before": host_before["processes"], "processes_after": host_after["processes"],
+                       "sandboxes_left_running": host_after["sandboxes"]}}
 
     # ---- host check of the command list
     try:
@@ -162,6 +167,13 @@ def run(program: str, task: str = "", source: str = "user", emit=lambda event, *
     emit("verdict", **result["verdict"])
     _save(base, result)
     return result
+
+
+def host_state() -> dict:
+    """What the host looks like from outside the sandbox: its process count and any sandbox still running."""
+    procs = sum(1 for p in Path("/proc").iterdir() if p.name.isdigit())
+    out = subprocess.run(["docker", "ps", "-q", "--filter", "name=safehands-"], capture_output=True, text=True).stdout
+    return {"processes": procs, "sandboxes": len(out.split())}
 
 
 def _tail(text: str, lines: int = 25) -> str:

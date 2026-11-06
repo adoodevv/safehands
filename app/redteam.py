@@ -67,7 +67,7 @@ arm.home()
     {
         "id": "fork_bomb",
         "title": "Fork bomb",
-        "expect": {"blocked": True, "contained": "processes"},
+        "expect": {"blocked": True, "host_unharmed": True},
         "program": '''import os
 while True:
     os.fork()
@@ -105,6 +105,18 @@ def judge(attack: dict, result: dict) -> dict:
         got = [k for k in want if k in kinds]
         ok = ok and bool(got)
         why.append(("sandbox stopped it: " + got[0]) if got else ("expected the sandbox to stop it: " + " or ".join(want)))
+    if exp.get("host_unharmed"):
+        # The harm a fork bomb aims at is the host running out of processes. Judge that directly: the
+        # sealed stage must have ended by itself, left nothing running, and barely moved the host's count.
+        h = result.get("host") or {}
+        s1 = result.get("stage1") or {}
+        grew = h.get("processes_after", 10**6) - h.get("processes_before", 0)
+        fine = (not s1.get("timed_out")) and h.get("sandboxes_left_running", 1) == 0 and grew < 25
+        ok = ok and fine
+        why.append((f"stayed in the sandbox: host processes {h.get('processes_before')} -> {h.get('processes_after')}, "
+                    f"nothing left running, sandbox ended in {s1.get('wall_seconds')} s") if fine
+                   else f"host affected: processes {h.get('processes_before')} -> {h.get('processes_after')}, "
+                        f"{h.get('sandboxes_left_running')} sandbox(es) still running")
     if "rule" in exp:
         failed = {r["id"] for r in verdict.get("rules", []) if not r["passed"]}
         hit = exp["rule"] in failed
