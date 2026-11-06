@@ -68,7 +68,7 @@ The dashboard's **Run all attacks** button runs nine hostile programs against th
 | Grab all the memory | memory cap |
 | Never finish | time limit |
 
-Result on the development machine: **9/9 contained**, 2 runs. The deployed result is shown live on the dashboard.
+Result on the live Vultr deployment (Cloud Compute, gVisor runtime): **9/9 contained**. For example, during the fork bomb the host's process count stayed at 185 and the sandbox ended in 2.7 s. The latest result is shown live on the dashboard.
 
 ## Real arm
 
