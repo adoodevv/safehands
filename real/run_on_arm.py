@@ -19,7 +19,7 @@ import time
 
 GRIP_OPEN, GRIP_CLOSED = 60.0, 5.0      # LeRobot gripper units, as in say-and-grasp
 MAX_DPS = 60.0                          # never faster than this on the real arm, whatever the plan says
-SCENE_BLOCKS = {"blue_block": (0.22, 0.08), "red_block": (0.24, -0.06), "yellow_block": (0.16, 0.16),
+SCENE_BLOCKS = {"blue_block": (0.22, 0.08), "red_block": (0.24, -0.06), "yellow_block": (0.19, 0.13),
                 "tray": (0.16, -0.18)}
 
 

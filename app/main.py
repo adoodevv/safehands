@@ -80,7 +80,7 @@ def _agent_job(job, req: RunRequest):
                 failed = [r for r in v["rules"] if not r["passed"]]
                 if not any(r["id"] != "sandbox" for r in failed):
                     break   # the program itself failed or was contained; a rewrite of the same task won't help
-                broken = [f"{r['title']}: {r['detail']}" for r in failed]
+                broken = [f"{r['title']}: {r['detail']}{_during(result, r.get('first_t'))}" for r in failed]
                 feedback.append({"program": prog["program"], "broken": broken})
                 pipeline.audit(result["id"], "retry", broken=broken)
             job["result"] = result
@@ -117,6 +117,22 @@ def _redteam_job(job):
         finally:
             job["done"] = True
             emit("done")
+
+
+def _during(result: dict, t) -> str:
+    """Which arm command was running when a rule first broke, so the model knows what to change."""
+    if t is None:
+        return ""
+    moves = [e for e in result.get("events") or [] if e.get("t", 0) <= t and e.get("cmd") != "grasped"]
+    if not moves:
+        return f" (at {t:.1f} s)"
+    e = moves[-1]
+    if e["cmd"] == "move_to":
+        what = f"arm.move_to({e['x']:.3f}, {e['y']:.3f}, {e['z']:.3f})"
+    else:
+        what = f"arm.{e['cmd']}()"
+    held = [g["object"] for g in result.get("events") or [] if g.get("cmd") == "grasped" and g["t"] <= t]
+    return f" (first at {t:.1f} s, during {what}" + (f", after picking up {held[-1]}" if held else "") + ")"
 
 
 def _slim(result: dict) -> dict:

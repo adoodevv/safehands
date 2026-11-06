@@ -117,6 +117,7 @@ static/index.html  the dashboard
 ## Limits
 
 - Grasping in the simulator attaches a block when the jaws close around it; it doesn't model friction-based grasping.
+- `move_to` points the gripper straight down where the 5-joint arm can; close to the base and high up it can't, so the tip tilts a few degrees and still reaches the point exactly.
 - The simulator's block positions are fixed; the real-arm script expects blocks placed at the same spots.
 - Software rendering of the replay video is the slow part: about 1 to 2.5 minutes per run on a small shared-CPU VM, depending on how long the motion is.
 

@@ -128,7 +128,25 @@ class Sim:
 
     # ------------------------------------------------------------------ IK
     def solve(self, target: np.ndarray, seed: np.ndarray) -> tuple[np.ndarray, float]:
-        """Joint angles that put the gripper tip at `target` pointing straight down (damped least squares)."""
+        """Joint angles that put the gripper tip at `target`, pointing as close to straight down as the
+        5-joint arm allows. Reaching the point comes first: if pointing straight down costs position
+        accuracy, the tilt constraint is relaxed step by step."""
+        # a second start from a position-only solution gets the solver out of the wrist-at-its-limit corner
+        seeds = [seed, self._solve(target, seed, 0.0)[0]]
+        best = None
+        for w in (0.3, 0.1, 0.03):
+            for sd in seeds:
+                q, err = self._solve(target, sd, w)
+                if best is None or err < best[1] - 1e-4:
+                    best = (q, err)
+            if best[1] < 0.002:
+                return best
+        # pointing straight down can't be had here: keep the nearest pose to the most-downward one
+        # that reaches the point exactly (the tip tilts a little instead of missing the target)
+        q, err = self._solve(target, best[0], 0.0)
+        return (q, err) if err < best[1] else best
+
+    def _solve(self, target: np.ndarray, seed: np.ndarray, w: float) -> tuple[np.ndarray, float]:
         d = mujoco.MjData(self.m)
         d.qpos[:] = self.d.qpos
         q = seed.copy()
@@ -138,7 +156,7 @@ class Sim:
         jacp = np.zeros((3, self.m.nv))
         jacr = np.zeros((3, self.m.nv))
         err = 1.0
-        for _ in range(300):
+        for _ in range(400):
             for a, v in zip(self.qadr, q):
                 d.qpos[a] = v
             mujoco.mj_kinematics(self.m, d)
@@ -152,9 +170,10 @@ class Sim:
             if err < 1e-4 and np.linalg.norm(e_ang) < 1e-3:
                 break
             mujoco.mj_jacSite(self.m, d, jacp, jacr, self.site)
-            J = np.vstack([jacp[:, self.dadr], 0.3 * jacr[:2, self.dadr]])
-            e = np.concatenate([e_pos, 0.3 * e_ang[:2]])
-            dq = J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(5), e)
+            J = np.vstack([jacp[:, self.dadr], w * jacr[:2, self.dadr]])
+            J[:, 4] = 0.0                              # leave wrist roll where it is: it can't help aim the tip
+            e = np.concatenate([e_pos, w * e_ang[:2]])
+            dq = J.T @ np.linalg.solve(J @ J.T + 1e-5 * np.eye(5), e)
             q = np.clip(q + 0.8 * dq, lo, hi)
         return q, err
 
